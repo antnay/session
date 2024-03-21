@@ -6,7 +6,14 @@ use std::io::{Error, Read};
 use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
-const HOME: &str = "/home/anthony/";
+const DIRS: &str = "sessionizer-directories.yaml";
+
+fn get_home_dir() -> String {
+    simple_home_dir::home_dir()
+        .expect("Could not determine home directory")
+        .display()
+        .to_string() 
+}
 
 fn get_sub_dirs(out_dirs: &mut Vec<String>, dir: &str, layers: i8) -> io::Result<Vec<String>> {
     let mut results = Vec::new();
@@ -40,19 +47,21 @@ fn parse(out_dirs: &mut Vec<String>, dir_yaml: String) -> Result<Vec<String>, Er
     let doc = &docs[0];
 
     let directories = &doc["directories"].as_vec().unwrap();
+    let home = get_home_dir();
 
     for entry in directories.iter() {
         let name = entry["name"].as_str().unwrap();
         let layers = entry["layers"].as_i64().unwrap() as i8;
-        let cur_dir = &format!("{}{}", HOME, name);
+        let cur_dir = &format!("{}{}", home, name);
         get_sub_dirs(out_dirs, cur_dir, layers).expect("Something went awry");
     }
     Ok(out_dirs.to_vec())
 }
 
 fn main() {
+
     let mut out_dirs: Vec<String> = Vec::new();
-    let _ = parse(&mut out_dirs, "./etc/dirs.yaml".to_string());
+    let _ = parse(&mut out_dirs, DIRS.to_string());
 
     let users_selection: String =
         run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
