@@ -1,10 +1,9 @@
-use fzf_wrapped::run_with_output;
-use fzf_wrapped::Fzf;
+use fzf_wrapped::{Fzf, run_with_output};
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::{Error, Read};
-use tmux_interface::{HasSession, NewSession, NewWindow, Tmux, SwitchClient};
+use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
 const HOME: &str = "/home/anthony/";
@@ -43,7 +42,7 @@ fn parse(out_dirs: &mut Vec<String>, dir_yaml: String) -> Result<Vec<String>, Er
         let layers = entry["layers"].as_i64().unwrap() as i8;
         let cur_dir = &format!("{}{}", HOME, name);
         // println!("{}", cur_dir);
-        get_sub_dirs(out_dirs, cur_dir, layers).expect("REASON");
+        get_sub_dirs(out_dirs, cur_dir, layers).expect("Something went awry");
     }
     Ok(out_dirs.to_vec())
 }
@@ -61,6 +60,14 @@ fn main() {
     // }
 
     let users_selection = run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
+    let path_vec = &users_selection.split('/');
+    let basename = path_vec.last();
+    match basename {
+        Some(x) => println!("{}", x),
+        None => println!("Not valid"),
+    }
+
+
     if users_selection.is_empty() {
         std::process::exit(0)
     }
@@ -69,17 +76,22 @@ fn main() {
         .unwrap()
         .success();
 
-    println!("{}", status);
     if status {
         Tmux::with_command(SwitchClient::new().target_session(&users_selection))
             .status()
             .unwrap();
     } else {
         Tmux::new()
-            .add_command(NewSession::new().session_name(&users_selection).start_directory(&users_selection))
+            .add_command(
+                NewSession::new()
+                    .session_name(&users_selection)
+                    .start_directory(&users_selection),
+            )
             .output()
             .unwrap();
     }
+
+    // Tmux::with_command(SwitchClient::new().target_session(basename));
 
     println!("\nName: {}", users_selection);
 }
