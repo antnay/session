@@ -1,5 +1,5 @@
 use fzf_wrapped::{run_with_output, Fzf};
-use std::fs;
+use std::{fs};
 use std::fs::File;
 use std::io;
 use std::io::{Error, Read};
@@ -18,7 +18,11 @@ fn get_home_dir() -> String {
         .to_string()
 }
 
-fn get_sub_dirs(out_dirs: &mut Vec<String>, dir: PathBuf, layers: i8) -> io::Result<Vec<String>> {
+fn get_sub_dirs_mul_layer(
+    out_dirs: &mut Vec<String>,
+    dir: PathBuf,
+    layers: i8,
+) -> io::Result<Vec<String>> {
     let mut results = Vec::new();
     if layers == 0 {
         return Ok(out_dirs.to_vec());
@@ -33,7 +37,7 @@ fn get_sub_dirs(out_dirs: &mut Vec<String>, dir: PathBuf, layers: i8) -> io::Res
                     let basename = &path.display().to_string();
                     // println!("{}", basename);
                     out_dirs.push(basename.clone());
-                    let sub_results = get_sub_dirs(out_dirs, path, layers - 1)?;
+                    let sub_results = get_sub_dirs_mul_layer(out_dirs, path, layers - 1)?;
                     results.extend(sub_results);
                 }
             }
@@ -41,6 +45,13 @@ fn get_sub_dirs(out_dirs: &mut Vec<String>, dir: PathBuf, layers: i8) -> io::Res
     }
     Ok(results)
 }
+
+fn add_to_dirs (out_dirs: &mut Vec<String>, dir: PathBuf) -> io::Result<Vec<String>> {
+    println!("{:?}", dir);
+    out_dirs.push(dir.to_str().unwrap().to_string());
+    Ok(out_dirs.to_vec())
+}
+
 
 fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> Result<(), Error> {
     let mut file = File::open(dir_yaml)?;
@@ -58,7 +69,19 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
         let out_dirs_clone = Arc::clone(&out_dirs);
         let handle = thread::spawn(move || {
             let cur_dir_path = PathBuf::from(&format!("{}{}", home_clone, name));
-            let result = get_sub_dirs(&mut out_dirs_clone.lock().unwrap(), cur_dir_path, layers);
+            let result: Result<Vec<String>, Error>;
+            if layers == 0 {
+                result = add_to_dirs (
+                    &mut out_dirs_clone.lock().unwrap(),
+                    cur_dir_path,
+                );
+            } else {
+                result = get_sub_dirs_mul_layer(
+                    &mut out_dirs_clone.lock().unwrap(),
+                    cur_dir_path,
+                    layers,
+                );
+            }
             result
         });
         handles.push(handle);
