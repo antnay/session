@@ -17,10 +17,15 @@ fn get_sub_dirs(out_dirs: &mut Vec<String>, dir: &str, layers: i8) -> io::Result
         let entry = entry?;
         let path = entry.path();
         if entry.file_type()?.is_dir() {
-            let basename = path.display().to_string();
-            out_dirs.push(basename.clone());
-            let sub_results = get_sub_dirs(out_dirs, &basename, layers - 1)?;
-            results.extend(sub_results);
+            let file_name = entry.file_name();
+            if let Some(name_str) = file_name.to_str() {
+                if !name_str.starts_with('.') {
+                    let basename = path.display().to_string();
+                    out_dirs.push(basename.clone());
+                    let sub_results = get_sub_dirs(out_dirs, &basename, layers - 1)?;
+                    results.extend(sub_results);
+                }
+            }
         }
     }
     Ok(results)
@@ -78,5 +83,5 @@ fn main() {
     Tmux::with_command(SwitchClient::new().target_session(&session_name))
         .status()
         .unwrap();
-        std::process::exit(0)
+    std::process::exit(0)
 }
