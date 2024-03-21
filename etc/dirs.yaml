@@ -1,0 +1,8 @@
+directories:
+  - name: development
+    layers: 2
+  - name: school
+    layers: 3
+  - name: obsidian-vaults
+    layers: 1
+
