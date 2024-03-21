@@ -59,14 +59,9 @@ fn main() {
     //     println!("{}", path);
     // }
 
-    let users_selection = run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
-    let path_vec = &users_selection.split('/');
+    let users_selection: String = run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
+    let path_vec: Vec<&str> = &users_selection.split('/');
     let basename = path_vec.last();
-    match basename {
-        Some(x) => println!("{}", x),
-        None => println!("Not valid"),
-    }
-
 
     if users_selection.is_empty() {
         std::process::exit(0)
