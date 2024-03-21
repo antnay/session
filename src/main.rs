@@ -9,8 +9,6 @@ use std::thread::{self, JoinHandle};
 use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
-// TODO Concurrency
-
 const DIRS: &str = "session-directories.yaml";
 
 fn get_home_dir() -> String {
@@ -48,61 +46,38 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
     let mut file = File::open(dir_yaml)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
-
     let docs = YamlLoader::load_from_str(&contents).unwrap();
     let doc = &docs[0];
-
     let directories = &doc["directories"].as_vec().unwrap();
-
-    let mut handles: Vec<JoinHandle<Result<Vec<String>, Error>>> = vec![]; // Store handles with error types
+    let mut handles: Vec<JoinHandle<Result<Vec<String>, Error>>> = vec![];
 
     for entry in directories.iter() {
-        let name = entry["name"].as_str().unwrap();
+        let name = entry["name"].as_str().unwrap().to_string();
         let layers = entry["layers"].as_i64().unwrap() as i8;
         let home_clone = home.clone();
         let out_dirs_clone = Arc::clone(&out_dirs);
-
         let handle = thread::spawn(move || {
             let cur_dir_path = PathBuf::from(&format!("{}{}", home_clone, name));
             let result = get_sub_dirs(&mut out_dirs_clone.lock().unwrap(), cur_dir_path, layers);
-            result // Return the result
+            result
         });
-
         handles.push(handle);
     }
-
-    // Handle potential errors
     for handle in handles {
         let result = handle.join().unwrap();
-        result?; // Propagate errors if any occur
+        result?;
     }
-
     Ok(())
 }
 
-fn main() {
-    let home = get_home_dir() + "/";
-    let orig_out_dirs = Arc::new(Mutex::new(Vec::new()));
-    let path_to_dir_list = home.to_owned() + DIRS;
-    // println!("path to dir list {}", path_to_dir_list);
-    let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
-    let out_dirs = orig_out_dirs.lock().unwrap().clone();
-
-    let users_selection: String =
-        run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
-    if users_selection.is_empty() {
-        std::process::exit(0)
-    }
-
+fn tmux_session(users_selection: String) {
     let (remaining, basename) = users_selection.rsplit_once('/').unwrap();
     let (_, parent) = remaining.rsplit_once('/').unwrap();
     let session_name = format!("{}/{}", parent, basename);
-
     let status = Tmux::with_command(HasSession::new().target_session(&session_name))
         .status()
         .unwrap()
         .success();
-
     if !status {
         Tmux::new()
             .add_command(
@@ -118,4 +93,20 @@ fn main() {
         .status()
         .unwrap();
     std::process::exit(0)
+}
+
+fn main() {
+    let home = get_home_dir() + "/";
+    let orig_out_dirs = Arc::new(Mutex::new(Vec::new()));
+    let path_to_dir_list = home.to_owned() + DIRS;
+    // println!("path to dir list {}", path_to_dir_list);
+    let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
+    let out_dirs = orig_out_dirs.lock().unwrap().clone();
+
+    let users_selection: String =
+        run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
+    if users_selection.is_empty() {
+        std::process::exit(0)
+    }
+    tmux_session(users_selection);
 }
