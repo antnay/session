@@ -4,8 +4,6 @@ use std::fs::File;
 use std::io;
 use std::io::{Error, Read};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
 use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
@@ -44,7 +42,7 @@ fn get_sub_dirs(out_dirs: &mut Vec<String>, dir: PathBuf, layers: i8) -> io::Res
     Ok(results)
 }
 
-fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> Result<(), Error> {
+fn parse(out_dirs: &mut Vec<String>, home: String, dir_yaml: String) -> Result<Vec<String>, Error> {
     let mut file = File::open(dir_yaml)?;
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
@@ -54,39 +52,21 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
 
     let directories = &doc["directories"].as_vec().unwrap();
 
-    let mut handles: Vec<JoinHandle<Result<Vec<String>, Error>>> = vec![]; // Store handles with error types
-
     for entry in directories.iter() {
         let name = entry["name"].as_str().unwrap();
         let layers = entry["layers"].as_i64().unwrap() as i8;
-        let home_clone = home.clone();
-        let out_dirs_clone = Arc::clone(&out_dirs);
-
-        let handle = thread::spawn(move || {
-            let cur_dir_path = PathBuf::from(&format!("{}{}", home_clone, name));
-            let result = get_sub_dirs(&mut out_dirs_clone.lock().unwrap(), cur_dir_path, layers);
-            result // Return the result
-        });
-
-        handles.push(handle);
+        let cur_dir_path = PathBuf::from(&format!("{}{}", home, name));
+        get_sub_dirs(out_dirs, cur_dir_path, layers).expect("Something went awry!");
     }
-
-    // Handle potential errors
-    for handle in handles {
-        let result = handle.join().unwrap();
-        result?; // Propagate errors if any occur
-    }
-
-    Ok(())
+    Ok(out_dirs.to_vec())
 }
 
 fn main() {
     let home = get_home_dir() + "/";
-    let orig_out_dirs = Arc::new(Mutex::new(Vec::new()));
+    let out_dirs = Arc::new(Mutex::new(Vec::new()));
     let path_to_dir_list = home.to_owned() + DIRS;
     // println!("path to dir list {}", path_to_dir_list);
-    let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
-    let out_dirs = orig_out_dirs.lock().unwrap().clone();
+    let _ = parse(Arc::clone(&out_dirs), home, path_to_dir_list);
 
     let users_selection: String =
         run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
