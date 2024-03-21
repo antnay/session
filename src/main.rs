@@ -52,7 +52,7 @@ fn parse(out_dirs: &mut Vec<String>, home: String, dir_yaml: String) -> Result<V
         let name = entry["name"].as_str().unwrap();
         let layers = entry["layers"].as_i64().unwrap() as i8;
         let cur_dir = &format!("{}{}", home, name);
-        println!("{}", cur_dir);
+        // println!("{}", cur_dir);
         get_sub_dirs(out_dirs, cur_dir, layers).expect("Something went awry");
     }
     Ok(out_dirs.to_vec())
@@ -62,7 +62,7 @@ fn main() {
     let home = get_home_dir() + "/";
     let mut out_dirs: Vec<String> = Vec::new();
     let path_to_dir_list = home.to_owned() + DIRS;
-    println!("{}", path_to_dir_list);
+    // println!("{}", path_to_dir_list);
     let _ = parse(&mut out_dirs, home, path_to_dir_list);
 
     let users_selection: String =
@@ -71,8 +71,8 @@ fn main() {
         std::process::exit(0)
     }
 
-    let (remaing, basename) = users_selection.rsplit_once('/').unwrap();
-    let (_, parent) = remaing.rsplit_once('/').unwrap();
+    let (remaining, basename) = users_selection.rsplit_once('/').unwrap();
+    let (_, parent) = remaining.rsplit_once('/').unwrap();
     let session_name = format!("{}/{}", parent, basename);
 
     let status = Tmux::with_command(HasSession::new().target_session(&session_name))
