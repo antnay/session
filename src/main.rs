@@ -9,10 +9,6 @@ use std::thread::{self, JoinHandle};
 use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
-// TODO: Handle non existent files
-// TODO: Handle empty files
-// TODO: Handle no entries in file
-
 const DIRS: &str = "session-directories.yaml";
 
 fn get_home_dir() -> String {
