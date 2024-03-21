@@ -63,10 +63,10 @@ fn parse(out_dirs: &mut Vec<String>, home: String, dir_yaml: String) -> Result<V
 
 fn main() {
     let home = get_home_dir() + "/";
-    let out_dirs = Arc::new(Mutex::new(Vec::new()));
+    let mut out_dirs: Vec<String> = Vec::new();
     let path_to_dir_list = home.to_owned() + DIRS;
     // println!("path to dir list {}", path_to_dir_list);
-    let _ = parse(Arc::clone(&out_dirs), home, path_to_dir_list);
+    let _ = parse(&mut out_dirs, home, path_to_dir_list);
 
     let users_selection: String =
         run_with_output(Fzf::default(), out_dirs).expect("Something went wrong!");
