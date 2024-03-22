@@ -1,19 +1,17 @@
-use core::panic;
 use fzf_wrapped::{run_with_output, Border, Color, Fzf};
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::{Error, Read};
 use std::path::PathBuf;
+use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
+use tmux_interface::{start_server, AttachSession, HasSession, NewSession, Tmux};
 use yaml_rust::YamlLoader;
 
 // TODO: Prevent duplicate directories when two of the same directories in dir yaml, Set of entries
 // TODO: Add support for other directories outside of HOME
-// TODO: Launch tmux if is not already running
-// TODO: Remove panics, continue if there is erro, printing to stderr
 
 const DIRS: &str = "session-directories.yaml";
 
@@ -69,41 +67,63 @@ fn add_to_dirs(out_dirs: &mut Vec<String>, dir: PathBuf) -> io::Result<Vec<Strin
 
 fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> Result<(), Error> {
     let mut file = match File::open(dir_yaml) {
-        Err(why) => panic!("\ncouldn't open {}: {}\n", DIRS, why),
+        Err(why) => {
+            eprintln!("\ncouldn't open {}: {}\n", DIRS, why);
+            exit(1);
+        }
         Ok(file) => file,
     };
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
     let docs = match YamlLoader::load_from_str(&contents) {
-        Err(why) => panic!("\ncouldn't parse {}: {}\n", DIRS, why),
+        Err(why) => {
+            eprintln!("\ncouldn't parse {}: {}\n", DIRS, why);
+            exit(1);
+        }
         Ok(docs) => docs,
     };
     let doc: &yaml_rust::Yaml;
     if docs.is_empty() {
-        panic!("\nuh oh {} is completely empty!\nconsider adding some directories in the format:\n\ndirectories:\n  - name: <directory excluding home path>\n    layers: <number of layers>\n", DIRS)
+        eprintln!("uh oh {} is completely empty!\nconsider adding some directories in the format:\n\ndirectories:\n  - name: <directory excluding home path>\n    layers: <number of layers>", DIRS);
+        exit(1);
     } else {
         doc = &docs[0];
     }
-    let directories = &doc["directories"].as_vec()
-        .unwrap_or_else(|| panic!("\nyikes, there doesn't seem to be any entries in {}!\nmake sure you have are following the format:\n\ndirectories:\n  - name: <directory excluding home path>\n    layers: <number of layers>\n", DIRS));
+    let directories;
+    match doc["directories"].as_vec() {
+        Some(dir) => directories = dir,
+        None => {
+            eprintln!("yikes, there doesn't seem to be any entries in 'directories'!\nmake sure you are following the format:\n\ndirectories:\n  - name: <directory excluding home path>\n    layers: <number of layers>");
+            exit(1);
+        }
+    }
     let mut handles: Vec<JoinHandle<Result<Vec<String>, Error>>> = vec![];
     for entry in directories.iter() {
-        let name = entry["name"]
-            .as_str()
-            .unwrap_or_else(|| {
+        let name_out = entry["name"].as_str();
+        let name: String;
+        match name_out {
+            Some(name_from_entry) => name = name_from_entry.to_string(),
+            None => {
                 eprintln!(
-                    "\noh shoot, an entry is missing a value for 'name' in {}!\n",
+                    "oh shoot, an entry is missing a value for 'name' in {}! Skipping.",
                     DIRS
-                )
-            })
-            .to_string();
-        let layers = entry["layers"].as_i64().unwrap_or_else(|| {
-            eprintln!(
-                "\naw man, an entry is missing a value for 'layers' in {}!\n",
-                DIRS
-            )
-        }) as i8;
-        if let Err(e) = name 
+                );
+                continue;
+            }
+        }
+        let layers_out = entry["layers"].as_i64();
+        let layers: i8;
+        match layers_out {
+            Some(layers_from_entry) => layers = layers_from_entry as i8,
+            None => {
+                eprintln!(
+                    "aw man, an entry is missing a value for 'layers' in {}! Skipping.",
+                    DIRS
+                );
+                continue;
+            }
+        }
+
         let home_clone = home.clone();
         let out_dirs_clone = Arc::clone(&out_dirs);
         let handle = thread::spawn(move || {
@@ -133,6 +153,7 @@ fn tmux_session(users_selection: String) {
     let (remaining, basename) = users_selection.rsplit_once('/').unwrap();
     let (_, parent) = remaining.rsplit_once('/').unwrap();
     let session_name = format!("{}/{}", parent, basename);
+    start_server!();
     let status = Tmux::with_command(HasSession::new().target_session(&session_name))
         .status()
         .unwrap()
@@ -148,7 +169,7 @@ fn tmux_session(users_selection: String) {
             .output()
             .unwrap();
     }
-    Tmux::with_command(SwitchClient::new().target_session(&session_name))
+    Tmux::with_command(AttachSession::new().target_session(&session_name))
         .status()
         .unwrap();
     std::process::exit(0)
