@@ -1,4 +1,5 @@
-use fzf_wrapped::{run_with_output, Fzf};
+use core::panic;
+use fzf_wrapped::{run_with_output, Border, Color, Fzf};
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -9,7 +10,21 @@ use std::thread::{self, JoinHandle};
 use tmux_interface::{HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
+// TODO: Prevent duplicate directories when two of the same directories in dir yaml, Set of entries
+// TODO: Add support for other directories outside of HOME
+// TODO: Launch tmux if is not already running
+// TODO: Remove panics, continue if there is erro, printing to stderr
+
 const DIRS: &str = "session-directories.yaml";
+
+fn main() {
+    let home = get_home_dir() + "/";
+    let orig_out_dirs = Arc::new(Mutex::new(vec![home.to_owned()]));
+    let path_to_dir_list = home.to_owned() + DIRS;
+    let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
+    let out_dirs = orig_out_dirs.lock().unwrap().clone();
+    tmux_session(fzf_search(out_dirs));
+}
 
 fn get_home_dir() -> String {
     simple_home_dir::home_dir()
@@ -53,14 +68,12 @@ fn add_to_dirs(out_dirs: &mut Vec<String>, dir: PathBuf) -> io::Result<Vec<Strin
 }
 
 fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> Result<(), Error> {
-    // let mut file = File::open(dir_yaml)?;
     let mut file = match File::open(dir_yaml) {
         Err(why) => panic!("\ncouldn't open {}: {}\n", DIRS, why),
         Ok(file) => file,
     };
     let mut contents = String::new();
     file.read_to_string(&mut contents)?;
-    // let docs = YamlLoader::load_from_str(&contents).unwrap();
     let docs = match YamlLoader::load_from_str(&contents) {
         Err(why) => panic!("\ncouldn't parse {}: {}\n", DIRS, why),
         Ok(docs) => docs,
@@ -71,14 +84,26 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
     } else {
         doc = &docs[0];
     }
-    let directories = &doc["directories"].as_vec().unwrap_or_else(|| panic!("\nyikes, there doesn't seem to be any entries in {}!\nmake sure you have are following the format:\n\ndirectories:\n  - name: <directory excluding home path>\n    layers: <number of layers>\n", DIRS));
-
-    
+    let directories = &doc["directories"].as_vec()
+        .unwrap_or_else(|| panic!("\nyikes, there doesn't seem to be any entries in {}!\nmake sure you have are following the format:\n\ndirectories:\n  - name: <directory excluding home path>\n    layers: <number of layers>\n", DIRS));
     let mut handles: Vec<JoinHandle<Result<Vec<String>, Error>>> = vec![];
-
     for entry in directories.iter() {
-        let name = entry["name"].as_str().unwrap().to_string();
-        let layers = entry["layers"].as_i64().unwrap() as i8;
+        let name = entry["name"]
+            .as_str()
+            .unwrap_or_else(|| {
+                eprintln!(
+                    "\noh shoot, an entry is missing a value for 'name' in {}!\n",
+                    DIRS
+                )
+            })
+            .to_string();
+        let layers = entry["layers"].as_i64().unwrap_or_else(|| {
+            eprintln!(
+                "\naw man, an entry is missing a value for 'layers' in {}!\n",
+                DIRS
+            )
+        }) as i8;
+        if let Err(e) = name 
         let home_clone = home.clone();
         let out_dirs_clone = Arc::clone(&out_dirs);
         let handle = thread::spawn(move || {
@@ -129,18 +154,19 @@ fn tmux_session(users_selection: String) {
     std::process::exit(0)
 }
 
-fn main() {
-    let home = get_home_dir() + "/";
-    let orig_out_dirs = Arc::new(Mutex::new(Vec::new()));
-    let path_to_dir_list = home.to_owned() + DIRS;
-    // println!("path to dir list {}", path_to_dir_list);
-    let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
-    let out_dirs = orig_out_dirs.lock().unwrap().clone();
-
-    let users_selection: String =
-        run_with_output(Fzf::default(), out_dirs).expect("Something went awry!");
+fn fzf_search(out_dirs: Vec<String>) -> String {
+    let users_selection: String = run_with_output(
+        Fzf::builder()
+            .border(Border::Rounded)
+            .border_label("Sessionizer")
+            .color(Color::Dark)
+            .build()
+            .unwrap(),
+        out_dirs,
+    )
+    .expect("Something went awry with fzf!");
     if users_selection.is_empty() {
         std::process::exit(0)
     }
-    tmux_session(users_selection);
+    users_selection
 }
