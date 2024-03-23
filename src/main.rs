@@ -1,8 +1,10 @@
 use fzf_wrapped::{run_with_output, Border, Color, Fzf};
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::io;
 use std::io::{Error, Read};
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
@@ -10,18 +12,20 @@ use std::thread::{self, JoinHandle};
 use tmux_interface::{start_server, AttachSession, HasSession, NewSession, Tmux};
 use yaml_rust::YamlLoader;
 
-// TODO: Prevent duplicate directories when two of the same directories in dir yaml, Set of entries
 // TODO: Add support for other directories outside of HOME
 
 const DIRS: &str = "session-directories.yaml";
 
 fn main() {
     let home = get_home_dir() + "/";
-    let orig_out_dirs = Arc::new(Mutex::new(vec![home.to_owned()]));
+    // let orig_out_dirs = Arc::new(Mutex::new(vec![home.to_owned()]));
+    let mut s_directories: HashSet<String> = HashSet::with_capacity(1);
+    s_directories.insert(home.clone());
+    let orig_out_dirs: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(s_directories));
     let path_to_dir_list = home.to_owned() + DIRS;
     let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
-    let out_dirs = orig_out_dirs.lock().unwrap().clone();
-    tmux_session(fzf_search(out_dirs));
+    // let out_dirs = orig_out_dirs.lock().unwrap().clone();
+    tmux_session(fzf_search(orig_out_dirs.lock().unwrap().deref().clone()));
 }
 
 fn get_home_dir() -> String {
@@ -31,41 +35,11 @@ fn get_home_dir() -> String {
         .to_string()
 }
 
-fn get_sub_dirs_mul_layer(
-    out_dirs: &mut Vec<String>,
-    dir: PathBuf,
-    layers: i8,
-) -> io::Result<Vec<String>> {
-    let mut results = Vec::new();
-    if layers == 0 {
-        return Ok(out_dirs.to_vec());
-    }
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if entry.file_type()?.is_dir() {
-            let file_name = entry.file_name();
-            if let Some(name_str) = file_name.to_str() {
-                if !name_str.starts_with('.') {
-                    let basename = &path.display().to_string();
-                    // println!("{}", basename);
-                    out_dirs.push(basename.clone());
-                    let sub_results = get_sub_dirs_mul_layer(out_dirs, path, layers - 1)?;
-                    results.extend(sub_results);
-                }
-            }
-        }
-    }
-    Ok(results)
-}
-
-fn add_to_dirs(out_dirs: &mut Vec<String>, dir: PathBuf) -> io::Result<Vec<String>> {
-    // println!("{:?}", dir);
-    out_dirs.push(dir.to_str().unwrap().to_string());
-    Ok(out_dirs.to_vec())
-}
-
-fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> Result<(), Error> {
+fn parse(
+    out_dirs: Arc<Mutex<HashSet<String>>>,
+    home: String,
+    dir_yaml: String,
+) -> Result<(), Error> {
     let mut file = match File::open(dir_yaml) {
         Err(why) => {
             eprintln!("\ncouldn't open {}: {}\n", DIRS, why);
@@ -97,7 +71,7 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
             exit(1);
         }
     }
-    let mut handles: Vec<JoinHandle<Result<Vec<String>, Error>>> = vec![];
+    let mut handles: Vec<JoinHandle<Result<HashSet<String>, Error>>> = vec![];
     for entry in directories.iter() {
         let name_out = entry["name"].as_str();
         let name: String;
@@ -128,7 +102,7 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
         let out_dirs_clone = Arc::clone(&out_dirs);
         let handle = thread::spawn(move || {
             let cur_dir_path = PathBuf::from(&format!("{}{}", home_clone, name));
-            let result: Result<Vec<String>, Error>;
+            let result: Result<HashSet<String>, Error>;
             if layers == 0 {
                 result = add_to_dirs(&mut out_dirs_clone.lock().unwrap(), cur_dir_path);
             } else {
@@ -147,6 +121,40 @@ fn parse(out_dirs: Arc<Mutex<Vec<String>>>, home: String, dir_yaml: String) -> R
         result?;
     }
     Ok(())
+}
+
+fn get_sub_dirs_mul_layer(
+    out_dirs: &mut HashSet<String>,
+    dir: PathBuf,
+    layers: i8,
+) -> io::Result<HashSet<String>> {
+    let mut results = HashSet::new();
+    if layers == 0 {
+        return Ok(out_dirs.deref().clone());
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if entry.file_type()?.is_dir() {
+            let file_name = entry.file_name();
+            if let Some(name_str) = file_name.to_str() {
+                if !name_str.starts_with('.') {
+                    let basename = &path.display().to_string();
+                    // println!("{}", basename);
+                    out_dirs.insert(basename.clone());
+                    let sub_results = get_sub_dirs_mul_layer(out_dirs, path, layers - 1)?;
+                    results.extend(sub_results);
+                }
+            }
+        }
+    }
+    Ok(results)
+}
+
+fn add_to_dirs(out_dirs: &mut HashSet<String>, dir: PathBuf) -> io::Result<HashSet<String>> {
+    // println!("{:?}", dir);
+    out_dirs.insert(dir.to_str().unwrap().to_string());
+    Ok(out_dirs.deref().clone())
 }
 
 fn tmux_session(users_selection: String) {
@@ -175,7 +183,7 @@ fn tmux_session(users_selection: String) {
     std::process::exit(0)
 }
 
-fn fzf_search(out_dirs: Vec<String>) -> String {
+fn fzf_search(out_dirs: HashSet<String>) -> String {
     let users_selection: String = run_with_output(
         Fzf::builder()
             .border(Border::Rounded)
