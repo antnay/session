@@ -9,11 +9,10 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use tmux_interface::{AttachSession, HasSession, NewSession, Tmux};
+use tmux_interface::{start_server, HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
 // TODO: Add support for other directories outside of HOME
-// TODO: Start new tmux server if not already running
 
 const DIRS: &str = "session-directories.yaml";
 
@@ -152,37 +151,6 @@ fn get_sub_dirs_mul_layer(
     Ok(results)
 }
 
-fn add_to_dirs(out_dirs: &mut HashSet<String>, dir: PathBuf) -> io::Result<HashSet<String>> {
-    // println!("{:?}", dir);
-    out_dirs.insert(dir.to_str().unwrap().to_string());
-    Ok(out_dirs.deref().clone())
-}
-
-fn tmux_session(users_selection: String) {
-    let (remaining, basename) = users_selection.rsplit_once('/').unwrap();
-    let (_, parent) = remaining.rsplit_once('/').unwrap();
-    let session_name = format!("{}/{}", parent, basename);
-    let status = Tmux::with_command(HasSession::new().target_session(&session_name))
-        .status()
-        .unwrap()
-        .success();
-    if !status {
-        Tmux::new()
-            .add_command(
-                NewSession::new()
-                    .detached()
-                    .session_name(&session_name)
-                    .start_directory(&users_selection),
-            )
-            .output()
-            .unwrap();
-    }
-    Tmux::with_command(AttachSession::new().target_session(&session_name))
-        .status()
-        .unwrap();
-    std::process::exit(0)
-}
-
 fn fzf_search(out_dirs: HashSet<String>) -> String {
     let users_selection: String = run_with_output(
         Fzf::builder()
@@ -198,4 +166,36 @@ fn fzf_search(out_dirs: HashSet<String>) -> String {
         std::process::exit(0)
     }
     users_selection
+}
+
+fn add_to_dirs(out_dirs: &mut HashSet<String>, dir: PathBuf) -> io::Result<HashSet<String>> {
+    // println!("{:?}", dir);
+    out_dirs.insert(dir.to_str().unwrap().to_string());
+    Ok(out_dirs.deref().clone())
+}
+
+fn tmux_session(users_selection: String) {
+    let (remaining, basename) = users_selection.rsplit_once('/').unwrap();
+    let (_, parent) = remaining.rsplit_once('/').unwrap();
+    let session_name = format!("{}/{}", parent, basename);
+    start_server!();
+    let status = Tmux::with_command(HasSession::new().target_session(&session_name))
+        .status()
+        .unwrap()
+        .success();
+    if !status {
+        Tmux::new()
+            .add_command(
+                NewSession::new()
+                    .detached()
+                    .session_name(&session_name)
+                    .start_directory(&users_selection),
+            )
+            .output()
+            .unwrap();
+    }
+    Tmux::with_command(SwitchClient::new().target_session(&session_name))
+        .status()
+        .unwrap();
+    std::process::exit(0)
 }
