@@ -9,10 +9,11 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use tmux_interface::{start_server, AttachSession, HasSession, NewSession, Tmux};
+use tmux_interface::{AttachSession, HasSession, NewSession, Tmux};
 use yaml_rust::YamlLoader;
 
 // TODO: Add support for other directories outside of HOME
+// TODO: Start new tmux server if not already running
 
 const DIRS: &str = "session-directories.yaml";
 
@@ -161,7 +162,6 @@ fn tmux_session(users_selection: String) {
     let (remaining, basename) = users_selection.rsplit_once('/').unwrap();
     let (_, parent) = remaining.rsplit_once('/').unwrap();
     let session_name = format!("{}/{}", parent, basename);
-    start_server!();
     let status = Tmux::with_command(HasSession::new().target_session(&session_name))
         .status()
         .unwrap()
