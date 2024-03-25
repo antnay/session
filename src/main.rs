@@ -1,5 +1,5 @@
 use fzf_wrapped::{run_with_output, Border, Color, Fzf};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fs;
 use std::fs::File;
 use std::io;
@@ -19,9 +19,9 @@ const DIRS: &str = "session-directories.yaml";
 fn main() {
     let home = get_home_dir() + "/";
     // let orig_out_dirs = Arc::new(Mutex::new(vec![home.to_owned()]));
-    let mut s_directories: HashSet<String> = HashSet::with_capacity(1);
+    let mut s_directories: BTreeSet<String> = BTreeSet::new();
     s_directories.insert(home.clone());
-    let orig_out_dirs: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(s_directories));
+    let orig_out_dirs: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(s_directories));
     let path_to_dir_list = home.to_owned() + DIRS;
     let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
     // let out_dirs = orig_out_dirs.lock().unwrap().clone();
@@ -36,7 +36,7 @@ fn get_home_dir() -> String {
 }
 
 fn parse(
-    out_dirs: Arc<Mutex<HashSet<String>>>,
+    out_dirs: Arc<Mutex<BTreeSet<String>>>,
     home: String,
     dir_yaml: String,
 ) -> Result<(), Error> {
@@ -71,7 +71,7 @@ fn parse(
             exit(1);
         }
     }
-    let mut handles: Vec<JoinHandle<Result<HashSet<String>, Error>>> = vec![];
+    let mut handles: Vec<JoinHandle<Result<BTreeSet<String>, Error>>> = vec![];
     for entry in directories.iter() {
         let name_out = entry["name"].as_str();
         let name: String;
@@ -102,7 +102,7 @@ fn parse(
         let out_dirs_clone = Arc::clone(&out_dirs);
         let handle = thread::spawn(move || {
             let cur_dir_path = PathBuf::from(&format!("{}{}", home_clone, name));
-            let result: Result<HashSet<String>, Error>;
+            let result: Result<BTreeSet<String>, Error>;
             if layers == 0 {
                 result = add_to_dirs(&mut out_dirs_clone.lock().unwrap(), cur_dir_path);
             } else {
@@ -124,11 +124,11 @@ fn parse(
 }
 
 fn get_sub_dirs_mul_layer(
-    out_dirs: &mut HashSet<String>,
+    out_dirs: &mut BTreeSet<String>,
     dir: PathBuf,
     layers: i8,
-) -> io::Result<HashSet<String>> {
-    let mut results = HashSet::new();
+) -> io::Result<BTreeSet<String>> {
+    let mut results = BTreeSet::new();
     if layers == 0 {
         return Ok(out_dirs.deref().clone());
     }
@@ -151,7 +151,7 @@ fn get_sub_dirs_mul_layer(
     Ok(results)
 }
 
-fn fzf_search(out_dirs: HashSet<String>) -> String {
+fn fzf_search(out_dirs: BTreeSet<String>) -> String {
     let users_selection: String = run_with_output(
         Fzf::builder()
             .border(Border::Rounded)
@@ -168,7 +168,7 @@ fn fzf_search(out_dirs: HashSet<String>) -> String {
     users_selection
 }
 
-fn add_to_dirs(out_dirs: &mut HashSet<String>, dir: PathBuf) -> io::Result<HashSet<String>> {
+fn add_to_dirs(out_dirs: &mut BTreeSet<String>, dir: PathBuf) -> io::Result<BTreeSet<String>> {
     // println!("{:?}", dir);
     out_dirs.insert(dir.to_str().unwrap().to_string());
     Ok(out_dirs.deref().clone())
