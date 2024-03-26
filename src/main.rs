@@ -48,6 +48,7 @@ fn parse(
         Ok(file) => file,
     };
     let mut contents = String::new();
+
     file.read_to_string(&mut contents)?;
     let docs = match YamlLoader::load_from_str(&contents) {
         Err(why) => {
