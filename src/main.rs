@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::exit;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
+use std::time::Instant;
 use tmux_interface::{start_server, HasSession, NewSession, SwitchClient, Tmux};
 use yaml_rust::YamlLoader;
 
@@ -17,6 +18,7 @@ use yaml_rust::YamlLoader;
 const DIRS: &str = "session-directories.yaml";
 
 fn main() {
+    let now = Instant::now();
     let home = get_home_dir() + "/";
     // let orig_out_dirs = Arc::new(Mutex::new(vec![home.to_owned()]));
     let mut s_directories: BTreeSet<String> = BTreeSet::new();
@@ -24,8 +26,10 @@ fn main() {
     let orig_out_dirs: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(s_directories));
     let path_to_dir_list = home.to_owned() + DIRS;
     let _ = parse(Arc::clone(&orig_out_dirs), home, path_to_dir_list);
+    let elapsed = now.elapsed();
+    println!("{:.2?}", elapsed);
     // let out_dirs = orig_out_dirs.lock().unwrap().clone();
-    tmux_session(fzf_search(orig_out_dirs.lock().unwrap().deref().clone()));
+    // tmux_session(fzf_search(orig_out_dirs.lock().unwrap().deref().clone()));
 }
 
 fn get_home_dir() -> String {
@@ -139,7 +143,8 @@ fn get_sub_dirs_mul_layer(
         if entry.file_type()?.is_dir() {
             let file_name = entry.file_name();
             if let Some(name_str) = file_name.to_str() {
-                if !name_str.starts_with('.') {
+                if !name_str.starts_with('.') && !out_dirs.contains(name_str) {
+                // if !name_str.starts_with('.') {
                     let basename = &path.display().to_string();
                     // println!("{}", basename);
                     out_dirs.insert(basename.clone());
