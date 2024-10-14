@@ -13,9 +13,9 @@ tmux_interface = "0.3.2"
 yaml-rust = "0.4.5"
 
 [profile.release]
-lto = true          # Enable link-time optimization
-codegen-units = 1   # Reduce number of codegen units to increase optimizations
-panic = 'abort'     # Abort on panic
-strip = true        # Strip symbols from binary*
+lto = true        # Enable link-time optimization
+codegen-units = 1 # Reduce number of codegen units to increase optimizations
+panic = 'abort'   # Abort on panic
+strip = true      # Strip symbols from binary*
 debug = false
-opt-level = "s"
+opt-level = 3
