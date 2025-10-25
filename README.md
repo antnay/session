@@ -9,6 +9,6 @@ Example:
 directories:
   - name: "/programming"
     layers: 2
-  - name: "/Documents/School/"
+  - name: "/Documents/School"
     layers: 2
 ```
