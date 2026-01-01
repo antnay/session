@@ -1,5 +1,5 @@
 [package]
-name = "ses"
+name = "session"
 version = "0.1.0"
 edition = "2021"
 build = "build.rs"
@@ -7,7 +7,6 @@ build = "build.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-file = "1.1.2"
 fzf-wrapped = "0.1.4"
 simple-home-dir = "0.5.2"
 tmux_interface = "0.3.2"
